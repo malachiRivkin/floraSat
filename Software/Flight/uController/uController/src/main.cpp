@@ -25,10 +25,23 @@
 #define I2C_SCL D21
 #define BMP_ADDRESS 0x77
 
+#define THERMISTOR_SOURCE_PIN D22
+#define THERMISTOR_ADC_PIN A0
+const int THERMISTOR_DIVIDER_R = 10000;
+// resistance at 25 degrees C
+#define THERMISTORNOMINAL 10000      
+// temp. for nominal resistance (almost always 25 C)
+#define TEMPERATURENOMINAL 25   
+// The beta coefficient of the thermistor (usually 3000-4000)
+#define BCOEFFICIENT 3950
+
 // default pins GPIO 4/5 work!
 //#define SEALEVELPRESSURE_HPA (1013.25)
 
 Adafruit_BMP3XX bmp;
+
+float thermistor_temp = 999.9;
+
 
 void setup() {
   Serial.begin(115200);
@@ -49,6 +62,31 @@ void setup() {
   //bmp.setPressureOversampling(BMP3_OVERSAMPLING_4X);
   //bmp.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
   //bmp.setOutputDataRate(BMP3_ODR_50_HZ);
+
+  pinMode(THERMISTOR_SOURCE_PIN, OUTPUT);
+  pinMode(THERMISTOR_ADC_PIN, INPUT);
+
+}
+
+float readTHermistor(){
+  int reading = 99;
+  digitalWrite(THERMISTOR_SOURCE_PIN, HIGH);
+  delay(1000);
+  reading = analogRead(THERMISTOR_ADC_PIN);
+  digitalWrite(THERMISTOR_SOURCE_PIN, LOW);
+  float reading_computed = reading;
+  // convert the value to resistance
+  reading_computed = THERMISTOR_DIVIDER_R / (4095/reading - 1);
+
+  float steinhart;
+  steinhart = reading_computed / THERMISTORNOMINAL;     // (R/Ro)
+  steinhart = log(steinhart);                  // ln(R/Ro)
+  steinhart /= BCOEFFICIENT;                   // 1/B * ln(R/Ro)
+  steinhart += 1.0 / (TEMPERATURENOMINAL + 273.15); // + (1/To)
+  steinhart = 1.0 / steinhart;                 // Invert
+  steinhart -= 273.15;                         // convert absolute temp to C
+
+  return steinhart;
 }
 
 void loop() {
@@ -71,7 +109,22 @@ void loop() {
   Serial.println(" m");
   */
   Serial.println();
+
+  thermistor_temp = readTHermistor();
+  Serial.print("Thermistor Temp = ");
+  Serial.print(thermistor_temp);
+  Serial.println(" *C");
+
+  //Read internal die temperature
+  float internal_temp = 999.0;
+  internal_temp = analogReadTemp();
+  Serial.print("Internal Temp = ");
+  Serial.print(internal_temp);
+  Serial.println(" *C");
+
+
   delay(2000);
   
   Serial.println("Here");
+  
 }
