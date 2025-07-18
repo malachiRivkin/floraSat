@@ -19,6 +19,8 @@
 #include <SPI.h>
 //#include <Adafruit_Sensor.h>
 #include "Adafruit_BMP3XX.h"
+#include "RTClib.h" //real time clock
+#include <SD.h> // SD card library
 
 //BMP i2c Pins
 #define I2C_SDA D20
@@ -42,6 +44,18 @@ Adafruit_BMP3XX bmp;
 
 float thermistor_temp = 999.9;
 
+// RTC setup
+RTC_PCF8523 rtc;
+
+//SD Card setup
+Sd2Card card;
+SdVolume volume;
+SdFile root;
+
+const int chipSelect = 17;
+const int SPIO_TX = 19;
+const int SPIO_SCK = 18;
+const int SPIO_RX = 16;
 
 void setup() {
   Serial.begin(115200);
@@ -63,8 +77,117 @@ void setup() {
   //bmp.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
   //bmp.setOutputDataRate(BMP3_ODR_50_HZ);
 
+  //thermistor
   pinMode(THERMISTOR_SOURCE_PIN, OUTPUT);
   pinMode(THERMISTOR_ADC_PIN, INPUT);
+
+  delay(2000);
+  //rtc
+  if (! rtc.begin()) {
+    delay(3000);
+    Serial.println("Couldn't find RTC");
+    Serial.flush();
+    while (1) delay(100);
+  }
+  /*
+  if (! rtc.initialized() || rtc.lostPower()) {
+    delay(5000);
+    Serial.println("RTC is NOT initialized, let's set the time!");
+    // When time needs to be set on a new device, or after a power loss, the
+    // following line sets the RTC to the date & time this sketch was compiled
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    // This line sets the RTC with an explicit date & time, for example to set
+    // January 21, 2014 at 3am you would call:
+    // rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+    //
+    // Note: allow 2 seconds after inserting battery or applying external power
+    // without battery before calling adjust(). This gives the PCF8523's
+    // crystal oscillator time to stabilize. If you call adjust() very quickly
+    // after the RTC is powered, lostPower() may still return true.
+  }
+  */
+  // When time needs to be re-set on a previously configured device, the
+  // following line sets the RTC to the date & time this sketch was compiled
+  //rtc.adjust(DateTime(F(__DATE__), F(__TIME__))); // uncomment this for plantsat reset!!!
+  // This line sets the RTC with an explicit date & time, for example to set
+  // January 21, 2014 at 3am you would call:
+  //rtc.adjust(DateTime(2025, 7, 16, 18, 56, 0));
+  // When the RTC was stopped and stays connected to the battery, it has
+  // to be restarted by clearing the STOP bit. Let's do this to ensure
+  // the RTC is running.
+  //rtc.adjust(DateTime(2014, 1, 21, 3, 0, 0));
+  rtc.start();
+
+  // SD Card setup
+  SPI.setCS(chipSelect);
+  SPI.setSCK(SPIO_SCK);
+  SPI.setRX(SPIO_RX);
+  SPI.setTX(SPIO_TX);
+
+  delay(3000);
+  Serial.print("Initializing SD Card!");
+  if (!card.init(SPI_HALF_SPEED, chipSelect)){
+    Serial.println("Initialization Failed. WOMP");
+    while(1);
+  }
+  else {
+    Serial.println("Wiring is correct and card is present.");
+  }
+  
+  //print the type of card
+  Serial.println();
+  Serial.print("Card type:         ");
+  switch (card.type()) {
+    case SD_CARD_TYPE_SD1:
+      Serial.println("SD1");
+      break;
+    case SD_CARD_TYPE_SD2:
+      Serial.println("SD2");
+      break;
+    case SD_CARD_TYPE_SDHC:
+      Serial.println("SDHC");
+      break;
+    default:
+      Serial.println("Unknown");
+  }
+
+  // Now we will try to open the 'volume'/'partition' - it should be FAT16 or FAT32
+  if (!volume.init(card)) {
+    Serial.println("Could not find FAT16/FAT32 partition.\nMake sure you've formatted the card");
+    while (1);
+  }
+
+  Serial.print("Clusters:          ");
+  Serial.println(volume.clusterCount());
+  Serial.print("Blocks x Cluster:  ");
+  Serial.println(volume.blocksPerCluster());
+
+  Serial.print("Total Blocks:      ");
+  Serial.println(volume.blocksPerCluster() * volume.clusterCount());
+  Serial.println();
+
+  // print the type and size of the first FAT-type volume
+  uint32_t volumesize;
+  Serial.print("Volume type is:    FAT");
+  Serial.println(volume.fatType(), DEC);
+
+  volumesize = volume.blocksPerCluster();    // clusters are collections of blocks
+  volumesize *= volume.clusterCount();       // we'll have a lot of clusters
+  volumesize /= 2;                           // SD card blocks are always 512 bytes (2 blocks are 1 KB)
+  Serial.print("Volume size (KB):  ");
+  Serial.println(volumesize);
+  Serial.print("Volume size (MB):  ");
+  volumesize /= 1024;
+  Serial.println(volumesize);
+  Serial.print("Volume size (GB):  ");
+  Serial.println((float)volumesize / 1024.0);
+
+  Serial.println("\nFiles found on the card (name, date and size in bytes): ");
+  root.openRoot(volume);
+
+  // list all files in the card with date and size
+  root.ls(LS_R | LS_DATE | LS_SIZE);
+  root.close();
 
 }
 
@@ -91,6 +214,11 @@ float readTHermistor(){
 
 void loop() {
   
+  // read machine time
+
+  // read utc time
+
+  //read air temp and pressure
   if (! bmp.performReading()) {
     Serial.println("Failed to perform reading :(");
     delay(1000);
@@ -122,9 +250,52 @@ void loop() {
   Serial.print(internal_temp);
   Serial.println(" *C");
 
+  //get time
+  DateTime now = rtc.now();
+
+  Serial.print(now.year(), DEC);
+  Serial.print('/');
+  Serial.print(now.month(), DEC);
+  Serial.print('/');
+  Serial.print(now.day(), DEC);
+  Serial.print(" ");
+  Serial.print(now.hour(), DEC);
+  Serial.print(':');
+  Serial.print(now.minute(), DEC);
+  Serial.print(':');
+  Serial.print(now.second(), DEC);
+  Serial.println();
+
+  Serial.print(" since midnight 1/1/1970 = ");
+  Serial.print(now.unixtime());
+  Serial.print("s = ");
+  Serial.print(now.unixtime() / 86400L);
+  Serial.println("d");
+
 
   delay(2000);
   
-  Serial.println("Here");
+  Serial.println("Here - running latest script!");
+
+  // make a string for assembling the data to log:
+  String dataString = "";
+
+  dataString += String(now.unixtime()) + "," + String(bmp.temperature);
+
+  // open the file. note that only one file can be open at a time,
+  // so you have to close this one before opening another.
+  File dataFile = SD.open("datalog.txt", FILE_WRITE);
+
+  // if the file is available, write to it:
+  if (dataFile) {
+    dataFile.println(dataString);
+    dataFile.close();
+    // print to the serial port too:
+    Serial.println(dataString);
+  }
+  // if the file isn't open, pop up an error:
+  else {
+    Serial.println("error opening datalog.txt");
+  }
   
 }
