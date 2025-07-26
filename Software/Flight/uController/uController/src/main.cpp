@@ -22,13 +22,9 @@
 #include "RTClib.h" //real time clock
 #include <SD.h> // SD card library
 
-//BMP i2c Pins
-#define I2C_SDA D20
-#define I2C_SCL D21
-#define BMP_ADDRESS 0x77
+#include "plantsat_pins.h"
 
-#define THERMISTOR_SOURCE_PIN D22
-#define THERMISTOR_ADC_PIN A0
+
 const int THERMISTOR_DIVIDER_R = 10000;
 // resistance at 25 degrees C
 #define THERMISTORNOMINAL 10000      
@@ -52,10 +48,6 @@ Sd2Card card;
 SdVolume volume;
 SdFile root;
 
-const int chipSelect = 17;
-const int SPIO_TX = 19;
-const int SPIO_SCK = 18;
-const int SPIO_RX = 16;
 
 void setup() {
   Serial.begin(115200);
@@ -189,6 +181,38 @@ void setup() {
   root.ls(LS_R | LS_DATE | LS_SIZE);
   root.close();
 
+  //7/21/25 test this call to see if it is needed for data logging
+  if (!SD.begin(chipSelect)) {
+    Serial.println("initialization failed. Things to check:");
+    Serial.println("1. is a card inserted?");
+    Serial.println("2. is your wiring correct?");
+    Serial.println("3. did you change the chipSelect pin to match your shield or module?");
+    Serial.println("Note: press reset button on the board and reopen this Serial Monitor after fixing your issue!");
+    while (true);
+  }
+
+}
+
+bool regulateTemperature(float SETPOINT, float CURRENT_TEMP){
+  // bang-bang temperature control, including hysteresis about setpoint
+  //return TRUE (FALSE) if heater is turned ON (OFF)
+  float deadband = 3.0; //Kelvin, symetrical tolerance
+  float low_threshhold = SETPOINT - deadband;
+  float high_threshhold = SETPOINT + deadband;
+  
+  //without hysteresis
+  if(CURRENT_TEMP > high_threshhold){
+    //set heater off
+    return FALSE;
+  }
+
+  if(CURRENT_TEMP < low_threshhold){
+    //turn heater on
+    return TRUE;
+  }
+
+  //alternatively, more additional control complexity might be added here, e.g. PID, adaptive...
+
 }
 
 float readTHermistor(){
@@ -217,6 +241,10 @@ void loop() {
   // read machine time
 
   // read utc time
+
+  // Check if any commands have been received
+  //guide on nanpb
+
 
   //read air temp and pressure
   if (! bmp.performReading()) {
@@ -275,7 +303,7 @@ void loop() {
 
   delay(2000);
   
-  Serial.println("Here - running latest script!");
+  Serial.println("Here - running latest script 7212025!");
 
   // make a string for assembling the data to log:
   String dataString = "";
