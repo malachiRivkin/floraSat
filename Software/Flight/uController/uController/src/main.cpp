@@ -24,6 +24,18 @@
 
 #include "plantsat_pins.h"
 
+//nanopb
+#include "plantSat.pb.h"
+#include "pb_common.h"
+#include "pb.h"
+#include <pb_encode.h>
+//nanopb
+uint8_t buffer[128];
+SimpleMessage message = SimpleMessage_init_zero;
+
+
+
+
 
 const int THERMISTOR_DIVIDER_R = 10000;
 // resistance at 25 degrees C
@@ -47,6 +59,7 @@ RTC_PCF8523 rtc;
 Sd2Card card;
 SdVolume volume;
 SdFile root;
+
 
 
 void setup() {
@@ -191,8 +204,11 @@ void setup() {
     while (true);
   }
 
-}
+  
 
+
+}
+/*
 bool regulateTemperature(float SETPOINT, float CURRENT_TEMP){
   // bang-bang temperature control, including hysteresis about setpoint
   //return TRUE (FALSE) if heater is turned ON (OFF)
@@ -214,7 +230,7 @@ bool regulateTemperature(float SETPOINT, float CURRENT_TEMP){
   //alternatively, more additional control complexity might be added here, e.g. PID, adaptive...
 
 }
-
+*/
 float readTHermistor(){
   int reading = 99;
   digitalWrite(THERMISTOR_SOURCE_PIN, HIGH);
@@ -243,7 +259,8 @@ void loop() {
   // read utc time
 
   // Check if any commands have been received
-  //guide on nanpb
+  //guide on nanpb: https://www.dfrobot.com/blog-1161.html
+  
 
 
   //read air temp and pressure
@@ -325,5 +342,33 @@ void loop() {
   else {
     Serial.println("error opening datalog.txt");
   }
+
+  //generate nanopb message
+  //message = SimpleMessage_init_zero;
+  //reset buffer
+  memset(buffer, 999, sizeof(buffer));
+  message.unix_time = now.unixtime();
+  message.air_pressure = bmp.pressure / 100.0;
+  message.air_temp = bmp.temperature;
+  message.internal_temp = internal_temp;
+  message.thermistor_1 = thermistor_temp;
+
+  //bool status = pb_encode(&stream, TestMessage_fields, &message);
+  pb_ostream_t stream = pb_ostream_from_buffer(buffer, sizeof(buffer));
+  bool status = pb_encode(&stream, SimpleMessage_fields, &message);
+
+  if(status == FALSE){
+    Serial.println("NanoPB encoding failed.");
+  }
+
+  Serial.print("message length: ");
+  Serial.println(stream.bytes_written);
+
+  Serial.print("Message: ");
   
+  for(int i=0; i<stream.bytes_written; i++){
+    Serial.printf("%02X",buffer[i]);
+  }
+  Serial.println();
+
 }
