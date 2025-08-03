@@ -1,0 +1,9 @@
+syntax = "proto2";
+
+message SimpleMessage {
+    required int32 unix_time = 1;
+    required float air_temp = 2;
+    required float air_pressure = 3;
+    required float thermistor_1 = 4;
+    required float internal_temp = 5;
+}
